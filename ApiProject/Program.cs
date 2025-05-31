@@ -7,6 +7,7 @@ namespace ApiProject
     {
         private static readonly Service _service = new Service(new HttpClient());
 
+
         static async Task Main(string[] args)
         {
             while (true)
@@ -15,16 +16,22 @@ namespace ApiProject
                 Console.WriteLine("2. Post");
                 Console.WriteLine("3. Put");
                 Console.WriteLine("4. Delete");
+                Console.WriteLine("5. Download Post Image");
+                Console.WriteLine("0. Exit");
 
-                var input = ValidString("Enter the variant: ");
-                if (string.IsNullOrWhiteSpace(input) || !int.TryParse(input, out int choice) || choice < 1 || choice > 4)
+                var input = await ValidString("Enter the variant: ");
+                if (string.IsNullOrWhiteSpace(input) || !int.TryParse(input, out int choice) || choice < 0 || choice > 5)
                 {
-                    Console.WriteLine("Invalid input. Please enter a number between 0 and 4.");
+                    Console.WriteLine("Invalid input. Please enter a number between 0 and 5.");
                     return;
                 }
 
                 switch (input)
                 {
+                    case "0":
+                        Console.Clear();
+                        Console.WriteLine("Exiting the application...");
+                        return;
                     case "1":
                         Console.Clear();
                         await PrintPostAsync();
@@ -40,6 +47,13 @@ namespace ApiProject
                     case "4":
                         Console.Clear();
                         await DeletePostAsync();
+                        break;
+                    case "5":
+                        Console.Clear();
+                        await DownloadPostImageAsync();
+                        break;
+                    default:
+                        Console.WriteLine("Invalid choice. Please try again.");
                         break;
                 }
             }
@@ -57,109 +71,102 @@ namespace ApiProject
             }
 
             Console.Write("Data received from GET request: ");
-            var deserializedData = JsonSerializer.Deserialize<PostWrapper>(data, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var postData = DeserializeResponse<PostWrapper>(data);
 
-            if (deserializedData == null)
+            if (postData == null)
             {
                 Console.WriteLine("No posts found in the response.");
                 return;
             }
 
-            Console.WriteLine(deserializedData);
+            Console.WriteLine(postData);
 
-            Console.WriteLine("Press any key to continue...");
-            Console.ReadKey();
-            Console.Clear();
+            ContinuePrompt();
         }
 
 
         private static async Task AddPostAsync()
         {
-            var text = ValidString("Enter text: ");
-            var image = ValidString("Enter image URL: ");
-            var tags = new List<string>();
-            while (true)
+            try
             {
-                var tag = ValidString("Enter new tag (or 0 for to finish): ");
-                if (tag == "0") break;
-                tags.Add(tag);
+                var text = await ValidString("Enter text: ");
+                var image = await ValidString("Enter image URL: ");
+                var tagsInput = await ValidString("Enter tags separated by commas: ");
+                var ownerId = await ValidString("Enter owner ID: ");
+
+                var tags = tagsInput.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim()).ToList();
+
+                var postData = new { text, image, tags, owner = ownerId };
+
+                var response = await _service.PostDataAsync("post/create", postData);
+                if (string.IsNullOrEmpty(response))
+                {
+                    Console.WriteLine("No data received from POST request.");
+                    return;
+                }
+
+                var postCreate = DeserializeResponse<PostCreate>(response);
+                if (postCreate == null) return;
+
+                Console.WriteLine(postCreate);
             }
-            var ownerId = ValidString("Enter owner ID: ");
-
-            var postData = new
+            catch (Exception ex)
             {
-                text = text,
-                image = image,
-                tags = tags,
-                owner = ownerId
-            };
-
-            var postResponse = await _service.PostDataAsync("post/create", postData);
-
-            if (string.IsNullOrEmpty(postResponse))
-            {
-                Console.WriteLine("No data received from POST request.");
-                return;
+                Console.WriteLine($"Error: {ex.Message}");
             }
-
-            Console.Write("Data received from POST request: ");
-
-            var postResponseDeserialized = JsonSerializer.Deserialize<PostCreate>(postResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            if (postResponseDeserialized == null)
+            finally
             {
-                Console.WriteLine("Failed to deserialize the response from POST request.");
-                return;
+                ContinuePrompt();
             }
-
-            Console.WriteLine(postResponseDeserialized);
-
-            Console.WriteLine("Press any key to continue...");
-            Console.ReadKey();
-            Console.Clear();
         }
 
 
         private static async Task UpdatePostAsync()
         {
-            var text = ValidString("Enter new text: ");
-            var image = ValidString("Enter new image URL: ");
-            var tags = new List<string>();
-            while (true)
+            try
             {
-                var tag = ValidString("Enter new tag (or 0 for to finish): ");
-                if (tag == "0") break;
-                tags.Add(tag);
+                var id = await ValidString("Enter the ID of the post to update: ");
+                var response = await _service.GetDataAsync($"post/{id}");
+
+                if (string.IsNullOrEmpty(response))
+                {
+                    Console.WriteLine("No data received from GET request.");
+                    return;
+                }
+
+                var post = DeserializeResponse<Post>(response);
+                if (post == null) return;
+
+                Console.WriteLine("Current post data:");
+                Console.WriteLine(post);
+
+                var text = await ValidString("Enter new text: ");
+                var image = await ValidString("Enter new image URL: ");
+                var tagsInput = await ValidString("Enter new tags separated by commas: ");
+
+                var putData = new { text, image, tags = tagsInput.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(t => t.Trim()).ToList() };
+                var putResponse = await _service.PutDataAsync($"post/{id}", putData);
+
+                if (string.IsNullOrEmpty(putResponse))
+                {
+                    Console.WriteLine("No data received from PUT request.");
+                    return;
+                }
+
+                var updatedPost = DeserializeResponse<Post>(putResponse);
+                if (updatedPost == null) return;
+
+                Console.WriteLine("Updated post data:");
+                Console.WriteLine(updatedPost);
             }
-
-            var putData = new
+            catch (Exception ex)
             {
-                text = text,
-                image = image,
-                tags = tags
-            };
-
-            var putResponse = await _service.PutDataAsync("post/6839e2888932b72aae2f5079", putData);
-
-            if (string.IsNullOrEmpty(putResponse))
-            {
-                Console.WriteLine("No data received from PUT request.");
-                return;
+                Console.WriteLine($"Error: {ex.Message}");
             }
-
-            Console.Write("Data received from PUT request: ");
-            var putResponseDeserialized = JsonSerializer.Deserialize<Post>(putResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-
-            if (putResponseDeserialized == null)
+            finally
             {
-                Console.WriteLine("Failed to deserialize the response from PUT request.");
-                return;
+                ContinuePrompt();
             }
-
-            Console.WriteLine(putResponseDeserialized);
-            Console.WriteLine("Press any key to continue...");
-            Console.ReadKey();
-            Console.Clear();
         }
 
 
@@ -167,33 +174,79 @@ namespace ApiProject
         {
             var id = ValidString("Enter the ID of the post to delete: ");
 
-            var deleteResponse = await _service.DeleteDataAsync($"post/{id}");
+            var response = await _service.DeleteDataAsync($"post/{id}");
 
-            if (string.IsNullOrEmpty(deleteResponse))
+            if (string.IsNullOrEmpty(response))
             {
                 Console.WriteLine("No data received from DELETE request.");
                 return;
             }
 
             Console.Write("Data received from DELETE request: ");
-            var deleteResponseDeserialized = JsonSerializer.Deserialize<Post>(deleteResponse, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            var post = DeserializeResponse<Post>(response);
 
-            if (deleteResponseDeserialized == null)
+            if (post == null)
             {
                 Console.WriteLine("Failed to deserialize the response from DELETE request.");
                 return;
             }
 
-            Console.WriteLine(deleteResponseDeserialized);
+            Console.WriteLine(post);
 
             Console.WriteLine("Post deleted successfully.");
-            Console.WriteLine("Press any key to continue...");
-            Console.ReadKey();
-            Console.Clear();
+            ContinuePrompt();
         }
 
 
-        private static string ValidString(string message)
+        private static async Task DownloadPostImageAsync()
+        {
+            try
+            {
+                var postId = await ValidString("Enter the ID of the post to download the image: ");
+
+
+
+                var postData = await _service.GetDataAsync($"post/{postId}");
+                if (string.IsNullOrEmpty(postData))
+                {
+                    Console.WriteLine("No data received from GET request.");
+                    return;
+                }
+
+                var post = DeserializeResponse<Post>(postData);
+                if (post == null || post.Image == null)
+                {
+                    Console.WriteLine("Error");
+                    return;
+                }
+
+                var ImageUrl = post.Image;
+
+                if (string.IsNullOrWhiteSpace(ImageUrl))
+                {
+                    Console.WriteLine("No image URL found for the specified post.");
+                    return;
+                }
+
+                var savePath = Path.Combine("C:\\WebApi\\ApiProject\\ApiProject\\Images", $"{postId}.jpg");
+                Directory.CreateDirectory(Path.GetDirectoryName(savePath));
+
+                await _service.DownloadPostImageAsync(ImageUrl, savePath);
+
+                Console.WriteLine($"Image downloaded successfully to {savePath}.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error: {ex.Message}");
+            }
+            finally
+            {
+               ContinuePrompt();
+            }
+        }
+
+
+        private static async Task<string> ValidString(string message)
         {
             while (true)
             {
@@ -206,7 +259,31 @@ namespace ApiProject
                 }
 
                 Console.WriteLine("Invalid input.");
+
+                await Task.Delay(500);
             }
+        }
+
+
+        private static T DeserializeResponse<T>(string response) where T : class
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<T>(response, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch
+            {
+                Console.WriteLine("Failed to deserialize response.");
+                return null;
+            }
+        }
+
+
+        private static void ContinuePrompt()
+        {
+            Console.WriteLine("Press any key to continue...");
+            Console.ReadKey();
+            Console.Clear();
         }
     }
 }

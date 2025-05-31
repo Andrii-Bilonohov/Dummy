@@ -67,5 +67,35 @@ namespace ApiProject
 
             return await response.Content.ReadAsStringAsync();
         }
+
+        public async Task DownloadPostImageAsync(string imageUrl, string savePath)
+        {
+            if (string.IsNullOrWhiteSpace(imageUrl))
+                throw new ArgumentException("Image URL cannot be null or empty.", nameof(imageUrl));
+
+            if (string.IsNullOrWhiteSpace(savePath))
+                throw new ArgumentException("Save path cannot be null or empty.", nameof(savePath));
+
+            try
+            {
+                using var response = await _httpClient.GetAsync(imageUrl);
+                
+                if (!response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"Error downloading image: {response.ReasonPhrase}");
+                    return;
+                }
+
+                var imageBytes = await response.Content.ReadAsByteArrayAsync();
+
+                await File.WriteAllBytesAsync(savePath, imageBytes);
+
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error downloading image: {ex.Message}");
+            }
+        }
+
     }
 }
